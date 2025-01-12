@@ -41,7 +41,7 @@ namespace rpi_bot_lib {
 class I2cInterface {
 public:
 
-   enum i2c_error {
+   enum i2c_error_code {
       kSuccess,
       kOpenError,
       kWriteError,
@@ -49,6 +49,11 @@ public:
       kInvalidAddessMode,
       kInvalidDeviceID,
       kInvalidDeviceHandle
+   };
+
+   struct i2c_error {
+      i2c_error_code code = kSuccess;
+      std::string    message;
    };
 
    ///
@@ -68,7 +73,7 @@ public:
    ///
    /// @return bool True on success; false on failure
    ///
-   bool open( const char* device_path );
+   i2c_error open( const char* device_path );
 
    ///
    /// Close the I2C interface

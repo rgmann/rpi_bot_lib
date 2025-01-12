@@ -43,8 +43,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <sstream>
 
-#include "Log.h"
 #include "i2c_interface.h"
 
 using namespace coral;
@@ -79,6 +79,8 @@ I2cInterface& I2cInterface::instance( const char* device_path )
 //-----------------------------------------------------------------------------
 bool I2cInterface::open( const char* device_path )
 {
+   i2c_error error;
+
    if ( handle_ == kInvalidHandle )
    {
       handle_ = ::open( device_path, O_RDWR );
@@ -91,18 +93,20 @@ bool I2cInterface::open( const char* device_path )
          {
             capabilities_ = 0;
          }
-
-         log::error("I2cInterface::open: handle_ = %d, cap = 0x%04X\n",
-            handle_, capabilities_ );
       }
       else
       {
-         log::error("I2cInterface::open: Failed to open device - %s\n",
-            strerror(errno));
+         std::stringstream message;
+         message << "I2cInterface::open: Failed to open device - "
+                 << strerror(errno)
+                 << std::endl;
+
+         error.code = kOpenError;
+         error.message = message.str();
       }
    }
 
-   return ( handle_ != kInvalidHandle );
+   return error;
 }
 
 //-----------------------------------------------------------------------------
@@ -124,36 +128,31 @@ bool I2cInterface::is_open() const
 //-----------------------------------------------------------------------------
 I2cInterface::i2c_error I2cInterface::acquire( uint16_t device_id )
 {
-   i2c_error status = kSuccess;
+   i2c_error error;
 
    if ( is_open() )
    {
-      uint32_t device_id_ul = device_id;
+      uint32_t device_id_ul = static_cast<uint32_t>(device_id);
 
       if ( ( device_id_ul & 0xFFFFFF00 ) &&
            ( ( capabilities_ & I2C_FUNC_10BIT_ADDR ) == 0 ) )
       {
-         log::error("I2cInterface::acquire: 10-bit addresses not supported.\n");
-         status = kInvalidAddessMode;
+         error.code = kInvalidAddessMode;
+         error.message = "I2cInterface::acquire: 10-bit addresses not supported.\n";
       }
-      else if ( ioctl( handle_, I2C_SLAVE, device_id_ul ) >= 0 )
+      else if ( ioctl( handle_, I2C_SLAVE, device_id_ul ) < 0 )
       {
-         // log::status("I2cInterface::acquire: SUCCESS\n");
-         status = kSuccess;
-      }
-      else
-      {
-         log::status("I2cInterface::acquire: Invalid device ID\n");
-         status = kInvalidDeviceID;
+         error.code = kInvalidDeviceID;
+         error.message = "I2cInterface::acquire: Invalid device ID\n";
       }
    }
    else
    {
-      log::status("I2cInterface::acquire: Invalid device handle\n");
-      status = kInvalidDeviceHandle;
+      error.code = kInvalidDeviceHandle;
+      error.message = "I2cInterface::acquire: Invalid device handle\n";
    }
 
-   return status;
+   return error;
 }
 
 //-----------------------------------------------------------------------------
@@ -163,7 +162,7 @@ I2cInterface::i2c_error I2cInterface::read(
    size_t&  bytes_recvd
 )
 {
-   i2c_error status = kSuccess;
+   i2c_error error;
 
    bytes_recvd = 0;
 
@@ -177,11 +176,17 @@ I2cInterface::i2c_error I2cInterface::read(
       }
       else
       {
-         status = kInvalidDeviceHandle;
+         error.code = kReadError;
+         error.message = "I2cInterface::acquire: Invalid device handle\n";
       }
    }
+   else
+   {
+      error.code = kInvalidDeviceHandle;
+      error.message = "I2cInterface::acquire: Invalid device handle\n";
+   }
 
-   return status;
+   return error;
 }
 
 //-----------------------------------------------------------------------------
@@ -194,14 +199,14 @@ I2cInterface::i2c_error I2cInterface::read(
 {
    bytes_recvd = 0;
 
-   i2c_error status = I2cInterface::write( &address, sizeof(address) );
+   i2c_error error = I2cInterface::write( &address, sizeof(address) );
 
-   if ( status == I2cInterface::kSuccess )
+   if ( error == I2cInterface::kSuccess )
    {
-      status = I2cInterface::read( buffer, max_bytes, bytes_recvd );
+      error = I2cInterface::read( buffer, max_bytes, bytes_recvd );
    }
 
-   return status;
+   return error;
 }
 
 //-----------------------------------------------------------------------------
@@ -209,7 +214,7 @@ I2cInterface::i2c_error I2cInterface::write(
    const void*    buffer,
    size_t         buffer_size )
 {
-   i2c_error status = kInvalidDeviceHandle;
+   i2c_error error;
 
    if ( is_open() )
    {
@@ -222,18 +227,22 @@ I2cInterface::i2c_error I2cInterface::write(
       }
       else
       {
-         log::error("I2cInterface::write: Error(ret=%d) - %s\n",
-            bytes_written,
-            strerror(errno));
-         status = kWriteError;
+         std::stringstream message;
+         message << "I2cInterface::write: Error(ret="
+                 << bytes_written << ") - "
+                 << strerror(errno) << std::endl;
+
+         error.code = kWriteError;
+         error.message = message.str();
       }
    }
    else
    {
-      log::error("I2cInterface::write: Invalid device handle\n");
+      error.code = kInvalidDeviceHandle;
+      error.message = "I2cInterface::write: Invalid device handle\n";
    }
 
-   return status;
+   return error;
 }
 
 //-----------------------------------------------------------------------------
@@ -242,7 +251,7 @@ I2cInterface::i2c_error I2cInterface::write(
    const void*    buffer,
    size_t         buffer_size )
 {
-   i2c_error status = kInvalidDeviceHandle;
+   i2c_error error;
 
    // Create a number buffer that contains the register address and the user-
    // supplied buffer. The data must be sent as one buffer that a repeated
@@ -253,9 +262,9 @@ I2cInterface::i2c_error I2cInterface::write(
    memcpy( temp_buffer, &address, sizeof(address) );
    memcpy( temp_buffer + sizeof(address), buffer, buffer_size );
 
-   status = I2cInterface::write( temp_buffer, temp_buffer_size );
+   error = I2cInterface::write( temp_buffer, temp_buffer_size );
 
    delete[] temp_buffer;
 
-   return status;
+   return error;
 }

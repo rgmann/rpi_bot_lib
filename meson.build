@@ -12,23 +12,27 @@ project(
 
 include_root = 'include'
 
-source_root = 'source'
 sources = [
-    'adxl345_controller.cpp',
-    'i2c_interface.cpp',
-    'pwm_controller.cpp'
+    'source/adxl345_controller.cpp',
+    'source/i2c_interface.cpp',
+    'source/pwm_controller.cpp'
 ]
-sources = ['/'.join([source_root, source]) for source in sources]
 
 common_arguments = [
     '-Wmissing-declarations',
     '-Wshadow',
-    '-include', meson.current_build_dir() / 'config.h',
+    # '-include', meson.current_build_dir() / 'config.h',
 ]
-cpp_arguments = ''
 
-if cc.get_id() == 'clang'
-    if cc.version().version_compare('<9')
+c_arguments = []
+cpp_arguments = []
+
+# cc = meson.get_compiler('c')
+cxx = meson.get_compiler('cpp')
+# config_h = configuration_data()
+
+if cxx.get_id() == 'clang'
+    if cxx.version().version_compare('<9')
         error('clang version is too old, rpi_bot_lib requires 9.0 or newer')
     endif
 
@@ -37,7 +41,7 @@ if cc.get_id() == 'clang'
     # result in macro redefinition errors if the user already has a setting for
     # `-D_FORTIFY_SOURCE`. Do not enable FORTIFY in either of those cases.
     if get_option('optimization') != '0'
-        fortify = cc.get_define('_FORTIFY_SOURCE')
+        fortify = cxx.get_define('_FORTIFY_SOURCE')
         if fortify == ''
             message('Adding _FORTIFY_SOURCE')
             common_arguments += [
@@ -48,7 +52,7 @@ if cc.get_id() == 'clang'
 
     # Use libc++ by default if available instead of libstdc++ when compiling
     # with clang.
-    if cc.find_library('c++', required : false).found()
+    if cxx.find_library('c++', required : false).found()
         cpp_arguments += [
             '-stdlib=libc++',
         ]
@@ -60,8 +64,8 @@ if cc.get_id() == 'clang'
     ]
 endif
 
-if cc.get_id() == 'gcc'
-    if cc.version().version_compare('<9')
+if cxx.get_id() == 'gcc'
+    if cxx.version().version_compare('<9')
         error('gcc version is too old, rpi_bot_lib requires 9.0 or newer')
     endif
 
@@ -74,7 +78,7 @@ if cc.get_id() == 'gcc'
     # disable the warning. With -Wpessimizing-move enabled, the compiler will
     # still warn of pessimizing moves, only the redundant but not pessimizing
     # moves will be ignored.
-    if cc.version().version_compare('>=13')
+    if cxx.version().version_compare('>=13')
         cpp_arguments += [
             '-Wno-redundant-move',
         ]
@@ -90,7 +94,12 @@ if cc.get_id() == 'gcc'
     endif
 endif
 
+c_arguments += common_arguments
 cpp_arguments += common_arguments
+
+add_project_arguments(c_arguments, language : 'c')
+add_project_arguments(cpp_arguments, language : 'cpp')
+add_project_link_arguments(cpp_arguments, language : 'cpp')
 
 shared_library(
     'rpibotlib', sources,
