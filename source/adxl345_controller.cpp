@@ -1,5 +1,4 @@
 #include <vector>
-#include "Log.h"
 #include "i2c_interface.h"
 #include "adxl345_controller.h"
 
@@ -89,6 +88,8 @@
 
 using namespace rpi_bot_lib;
 
+static const std::string kControllerNotInitializedMessage = "ADXL345 controller not initialized";
+
 //-----------------------------------------------------------------------------
 Adxl345Controller::Adxl345Controller(I2cInterface& i2c, uint16_t address)
    : i2c_( i2c )
@@ -102,53 +103,45 @@ Adxl345Controller::Adxl345Controller(I2cInterface& i2c, uint16_t address)
 }
 
 //-----------------------------------------------------------------------------
-bool Adxl345Controller::initialize()
+error Adxl345Controller::initialize()
 {
-   bool success = false;
-   if ( i2c_.acquire( address_ ) == I2cInterface::kSuccess )
-   {
-      success = true;
+   error status;
 
+   if ( (status = i2c_.acquire( address_ )) )
+   {
       // Wakeup
       uint8_t power_ctrl = 0;
-      if (i2c_.write(ADXL345_POWER_CTL, &power_ctrl, sizeof(power_ctrl)) != I2cInterface::kSuccess)
+      if ( !i2c_.write(ADXL345_POWER_CTL, &power_ctrl, sizeof(power_ctrl)) )
       {
-         success = false;
-         coral::log::error("Adxl345Controller::initialize: Failed attempting to wakeup.\n");
+         status = error::make_error("Failed attempting to wakeup");
       }
 
       // Auto_Sleep
       power_ctrl = 0x10;
-      if (success && i2c_.write(ADXL345_POWER_CTL, &power_ctrl, sizeof(power_ctrl)) != I2cInterface::kSuccess)
+      if (status && !i2c_.write(ADXL345_POWER_CTL, &power_ctrl, sizeof(power_ctrl)) )
       {
-         success = false;
-         coral::log::error("Adxl345Controller::initialize: Failed attempting to set Auto_Sleep.\n");
+         status = error::make_error("Failed attempting to set Auto_Sleep");
       }
 
       // Measure
       power_ctrl = 0x08;
-      if (success && i2c_.write(ADXL345_POWER_CTL, &power_ctrl, sizeof(power_ctrl)) != I2cInterface::kSuccess)
+      if (status && !i2c_.write(ADXL345_POWER_CTL, &power_ctrl, sizeof(power_ctrl)) )
       {
-         success = false;
-         coral::log::error("Adxl345Controller::initialize: Failed attempting to set Measure.\n");
+         status = error::make_error("Failed attempting to set Measure");
       }
 
-      initialized_ = success;
-   }
-   else
-   {
-      coral::log::error("Adxl345Controller::read_acceleration_data: Failed to acquire bus.\n");
+      initialized_ = status.ok();
    }
 
-   return success;
+   return status;
 }
 
 //-----------------------------------------------------------------------------
-bool Adxl345Controller::set_range_setting(RangeSetting setting)
+error Adxl345Controller::set_range_setting(RangeSetting setting)
 {
    uint8_t temp = 0;
    uint8_t new_setting = 0;
-   bool success = false;
+   error status;
 
    if ( setting == Adxl345Controller::kRange2g )
    {
@@ -168,77 +161,64 @@ bool Adxl345Controller::set_range_setting(RangeSetting setting)
    }
    else
    {
-      coral::log::error("Adxl345Controller::set_range_setting: Invalid setting.\n");
-      return false;
+      status = error::make_error("Invalid setting");
+      return status;
    }
 
-   if ( i2c_.acquire( address_ ) == I2cInterface::kSuccess )
+   if ( (status = i2c_.acquire( address_ )) )
    {
       size_t bytes_rcvd = 0;
-      success = true;
 
-      if ( i2c_.read(ADXL345_DATA_FORMAT, &temp, sizeof(temp), bytes_rcvd) != I2cInterface::kSuccess )
+      if ( !i2c_.read(ADXL345_DATA_FORMAT, &temp, sizeof(temp), bytes_rcvd) )
       {
-         coral::log::error("Adxl345Controller::set_range_setting: Error reading ADXL345_DATA_FORMAT setting.\n");
-         success = false;
+         status = error::make_error("Error reading ADXL345_DATA_FORMAT setting");
       }
       new_setting |= (temp & 0xEC);
 
-      if ( success && i2c_.write(ADXL345_DATA_FORMAT, &new_setting, sizeof(new_setting))  != I2cInterface::kSuccess )
+      if ( status && !i2c_.write(ADXL345_DATA_FORMAT, &new_setting, sizeof(new_setting)) )
       {
-         coral::log::error("Adxl345Controller::set_range_setting: Error writing ADXL345_DATA_FORMAT setting.\n");
-         success = false;
+         status = error::make_error("Error writing ADXL345_DATA_FORMAT setting");
       }
    }
-   else
-   {
-      coral::log::error("Adxl345Controller::read_acceleration_data: Failed to acquire bus.\n");
-   }
 
-   return success;
+   return status;
 }
 
 //-----------------------------------------------------------------------------
-bool Adxl345Controller::read_acceleration_data(AccelerationData& data)
+error Adxl345Controller::read_acceleration_data(AccelerationData& data)
 {
-   bool success = false;
+   error status;
 
    if ( !initialized_ )
    {
-      coral::log::error("Adxl345Controller::read_acceleration_data: Controller must be initialized.\n");
-      return false;
+      status = error::make_error(kControllerNotInitializedMessage);
+      return status;
    }
 
-   if ( i2c_.acquire( address_ ) == I2cInterface::kSuccess )
+   if ( (status = i2c_.acquire( address_ )) )
    {
       static constexpr uint32_t kBufferSize = 6;
       std::vector<uint8_t> buffer(kBufferSize, static_cast<uint8_t>(0));
 
       size_t bytes_received = 0;
-      if ( i2c_.read(ADXL345_DATAX0, &buffer[0], buffer.size(), bytes_received) == I2cInterface::kSuccess)
+      if ( (status = i2c_.read(ADXL345_DATAX0, &buffer[0], buffer.size(), bytes_received) ) )
       {
          if ( bytes_received == kBufferSize )
          {
             data.x = (int16_t)((((int)buffer[1]) << 8) | buffer[0]);
             data.y = (int16_t)((((int)buffer[3]) << 8) | buffer[2]);
             data.z = (int16_t)((((int)buffer[5]) << 8) | buffer[4]);
-
-            success = true;
          }
          else
          {
-            coral::log::error("Adxl345Controller::read_acceleration_data: Received less than expected data.\n");
+            status = error::make_error("Received less than expected data");
          }
       } 
       else
       {
-         coral::log::error("Adxl345Controller::read_acceleration_data: Failed attempting to read acceleration data.\n");
+         status = error::make_error("Failed attempting to read acceleration data");
       }
    }
-   else
-   {
-      coral::log::error("Adxl345Controller::read_acceleration_data: Failed to acquire bus.\n");
-   }
 
-   return success;
+   return status;
 }

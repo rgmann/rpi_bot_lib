@@ -35,26 +35,16 @@
 
 #include <stdint.h>
 #include <cstddef>
+#include "error_code.h"
 
 namespace rpi_bot_lib {
 
 class I2cInterface {
 public:
 
-   enum i2c_error_code {
-      kSuccess,
-      kOpenError,
-      kWriteError,
-      kReadError,
-      kInvalidAddessMode,
-      kInvalidDeviceID,
-      kInvalidDeviceHandle
-   };
+   I2cInterface( const I2cInterface& ) = delete;
 
-   struct i2c_error {
-      i2c_error_code code = kSuccess;
-      std::string    message;
-   };
+   I2cInterface& operator= ( const I2cInterface& ) = delete;
 
    ///
    /// Destructor
@@ -73,7 +63,7 @@ public:
    ///
    /// @return bool True on success; false on failure
    ///
-   i2c_error open( const char* device_path );
+   error open( const char* device_path );
 
    ///
    /// Close the I2C interface
@@ -85,19 +75,17 @@ public:
    ///
    bool is_open() const;
 
-   i2c_error acquire( uint16_t device_id );
+   error acquire( uint16_t device_id );
 
-   i2c_error read( void* buffer, size_t max_bytes, size_t& bytes_recvd );
-   i2c_error read( uint8_t address, void* buffer, size_t max_bytes, size_t& bytes_recvd );
+   error read( void* buffer, size_t max_bytes, size_t& bytes_recvd );
+   error read( uint8_t address, void* buffer, size_t max_bytes, size_t& bytes_recvd );
 
-   i2c_error write( const void* buffer, size_t buffer_size );
-   i2c_error write( uint8_t address, const void* buffer, size_t buffer_size );
+   error write( const void* buffer, size_t buffer_size );
+   error write( uint8_t address, const void* buffer, size_t buffer_size );
 
 private:
 
    I2cInterface();
-   I2cInterface( const I2cInterface& ) {};
-   I2cInterface& operator= ( const I2cInterface& ) {};
 
 private:
 

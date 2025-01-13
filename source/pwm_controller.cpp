@@ -30,14 +30,11 @@
 // Date: 2015-11-15
 // 
 
-#include <boost/chrono/chrono.hpp>
-#include <boost/thread/thread.hpp>
+#include <chrono>
+#include <thread>
 
-#include "Log.h"
 #include "i2c_interface.h"
 #include "pwm_controller.h"
-
-using namespace coral;
 
 // Registers/etc.
 #define PWMC_REG_MODE1               0x00
@@ -68,6 +65,8 @@ using namespace coral;
 
 using namespace rpi_bot_lib;
 
+static const std::string kControllerNonInitializedMessage = "PWM controller not initialized";
+
 //-----------------------------------------------------------------------------
 PwmController::PwmController( I2cInterface& interface, uint16_t address )
    : i2c_( interface )
@@ -78,160 +77,121 @@ PwmController::PwmController( I2cInterface& interface, uint16_t address )
 }
 
 //-----------------------------------------------------------------------------
-bool PwmController::initialize()
+error PwmController::initialize()
 {
-   bool success = set_all_pwm( 0, 0 );
+   error status = set_all_pwm(0, 0);
 
-   if ( success )
+   if ( status.ok() )
    {
       uint8_t mode2 = PWMC_OUTDRV;
 
-      if ( i2c_.write(
-         PWMC_REG_MODE2,
-         &mode2,
-         sizeof( mode2 )
-      ) == I2cInterface::kSuccess )
+      if ( i2c_.write( PWMC_REG_MODE2, &mode2, sizeof(mode2)) )
       {
          uint8_t mode1 = PWMC_ALLCALL;
 
-         if ( i2c_.write(
-            PWMC_REG_MODE1,
-            &mode1,
-            sizeof( mode1 )
-         ) == I2cInterface::kSuccess )
+         if ( i2c_.write( PWMC_REG_MODE1, &mode1, sizeof(mode1)) )
          {
-            // TODO: Sleep 5 ms
-            boost::this_thread::sleep_for(boost::chrono::milliseconds(5));
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
 
             uint8_t current_mode = 0;
             size_t bytes_rcvd = 0;
 
-            if ( ( i2c_.read(
-                  PWMC_REG_MODE1,
-                  &current_mode,
-                  sizeof( current_mode ),
-                  bytes_rcvd
-               ) == I2cInterface::kSuccess ) &&
-               ( bytes_rcvd == sizeof( current_mode ) )
+            if ( i2c_.read(PWMC_REG_MODE1, &current_mode, sizeof(current_mode), bytes_rcvd) &&
+                 ( bytes_rcvd == sizeof( current_mode ) )
             )
             {
-               log::status("initialize: CURRENT MODE = 0x%02X\n", current_mode);
                // Wake the device by clearing the sleep bit.
                current_mode &= ~PWMC_SLEEP;
 
-               if ( i2c_.write(
-                  PWMC_REG_MODE1,
-                  &current_mode,
-                  sizeof( current_mode )
-               ) == I2cInterface::kSuccess )
+               if ( i2c_.write( PWMC_REG_MODE1, &current_mode, sizeof(current_mode)) )
                {
-                  boost::this_thread::sleep(boost::posix_time::milliseconds(5));
-                  success = true;
+                  std::this_thread::sleep_for(std::chrono::milliseconds(5));
                   initialized_ = true;
                }
                else
                {
-                  log::error("PwmController::initialize: Failed to set current mode\n");
-                  success = false;
+                  status = error::make_error("Failed to set current mode");
                }
             }
             else
             {
-               log::error("PwmController::initialize: Failed to read current mode\n");
-               success = false;
+               status = error::make_error("Failed to read current mode");
             }
          }
          else
          {
-            log::error("PwmController::initialize: Failed to set current mode 1\n");
-            success = false;
+            status = error::make_error("Failed to set current mode 1");
          }
       }
       else
       {
-         log::error("PwmController::initialize: Failed to set current mode 2\n");
-         success = false;
+         status = error::make_error("Failed to set current mode 2");
       }
    }
 
-   return success;
+   return status;
 }
 
 //-----------------------------------------------------------------------------
-bool PwmController::set_frequency( uint16_t frequency )
+error PwmController::set_frequency( uint16_t frequency )
 {
-   bool success = false;
+   error status;
 
-   if ( initialized_ )
+   if ( !initialized_ ) {
+      status = error::make_error(kControllerNonInitializedMessage);
+      return status;
+   }
+
+   if ( (status = i2c_.acquire(address_)) )
    {
-      if ( i2c_.acquire( address_ ) == I2cInterface::kSuccess )
+      double prescale_value = ( PWMC_25MHZ / 4096.0 ) / (double)frequency;
+      prescale_value -= 1.0;
+
+      uint8_t prescale = floor( prescale_value + 0.5 );
+
+      size_t bytes_rcvd = 0;
+      uint8_t orignal_mode = 0;
+
+      if ( i2c_.read(PWMC_REG_MODE1, &orignal_mode, sizeof(orignal_mode), bytes_rcvd) )
       {
-         double prescale_value = ( PWMC_25MHZ / 4096.0 ) / (double)frequency;
-         prescale_value -= 1.0;
+         uint8_t new_mode = ( orignal_mode & 0x7F ) | PWMC_SLEEP;
 
-         uint8_t prescale = floor( prescale_value + 0.5 );
-
-         size_t bytes_rcvd = 0;
-         uint8_t orignal_mode = 0;
-
-         if ( i2c_.read( PWMC_REG_MODE1, &orignal_mode, sizeof( orignal_mode ), bytes_rcvd ) == I2cInterface::kSuccess )
+         if ( i2c_.write(PWMC_REG_MODE1, &new_mode, sizeof(new_mode)) )
          {
-            uint8_t new_mode = ( orignal_mode & 0x7F ) | PWMC_SLEEP;
-            log::status("CURRENT MODE = 0x%02X, new_mode=%02X\n", orignal_mode, new_mode);
-
-            if ( i2c_.write( PWMC_REG_MODE1, &new_mode, sizeof( new_mode ) ) == I2cInterface::kSuccess )
+            if ( !i2c_.write(PWMC_REG_PRESCALE, &prescale, sizeof(prescale)) )
             {
-               if ( i2c_.write( PWMC_REG_PRESCALE, &prescale, sizeof( prescale ) ) != I2cInterface::kSuccess )
-               {
-                  log::error("PwmController::set_frequency: Failed to set prescale of %u.\n", prescale);
-                  success = false;
-               }
+               status = error::make_error("Write error while writing PWM prescale register");
+            }
 
-               // Regardless of whether the prescaler was successfully set, return
-               // to the old mode.
-               if ( i2c_.write( PWMC_REG_MODE1, &orignal_mode, sizeof( orignal_mode ) ) == I2cInterface::kSuccess )
-               {
-                  // TODO: Sleep 5 ms
-                  boost::this_thread::sleep(boost::posix_time::milliseconds(5));
+            // Regardless of whether the prescaler was successfully set, return
+            // to the old mode.
+            if ( i2c_.write( PWMC_REG_MODE1, &orignal_mode, sizeof(orignal_mode)) )
+            {
+               std::this_thread::sleep_for(std::chrono::milliseconds(5));
 
-                  orignal_mode |= 0x80;
-                  if ( i2c_.write( PWMC_REG_MODE1, &orignal_mode, sizeof( orignal_mode ) ) == I2cInterface::kSuccess )
-                  {
-                     frequency_hz_ = (int32_t)frequency;
-                     success = true;
-                  }
-                  else
-                  {
-                     log::error("PwmController::set_frequency: ERROR at %d\n",__LINE__);
-                     success = false;
-                  }
-               }
-               else
+               orignal_mode |= 0x80;
+               if ( !i2c_.write(PWMC_REG_MODE1, &orignal_mode, sizeof(orignal_mode)) )
                {
-                  log::error("PwmController::set_frequency: ERROR at %d\n",__LINE__);
-                  success = false;
+                  status = error::make_error("Write error while writing PWM mode register");
                }
             }
             else
             {
-               log::error("PwmController::set_frequency: ERROR at %d\n",__LINE__);
-               success = false;
+               status = error::make_error("Write error while writing PWM mode register");
             }
          }
          else
          {
-            log::error("PwmController::set_frequency: ERROR at %d\n",__LINE__);
-            success = false;
+            status = error::make_error("Write error while enabling sleep mode");
          }
       }
       else
       {
-         log::error("PwmController::set_frequency: ERROR at %d\n",__LINE__);
-         success = false;
+         status = error::make_error("Write error while reading PWM mode register");
       }
    }
 
-   return success;
+   return status;
 }
 
 //-----------------------------------------------------------------------------
@@ -241,152 +201,96 @@ int32_t PwmController::get_frequency() const
 }
 
 //-----------------------------------------------------------------------------
-bool PwmController::set_pwm( size_t channel, uint16_t on_ticks, uint16_t off_ticks )
+error PwmController::set_pwm( size_t channel, uint16_t on_ticks, uint16_t off_ticks )
 {
-   bool success = false;
+   error status;
 
-   if ( initialized_ )
-   {
-      if ( i2c_.acquire( address_ ) == I2cInterface::kSuccess )
-      {
-         uint8_t on_ticks_lower = on_ticks & 0xFF;
-
-         if ( i2c_.write(
-            PWMC_REG_LED0_ON_L + 4 * channel,
-            &on_ticks_lower,
-            sizeof( on_ticks_lower )
-         ) == I2cInterface::kSuccess )
-         {
-            uint8_t on_ticks_upper = on_ticks >> 8;
-
-            if ( i2c_.write(
-               PWMC_REG_LED0_ON_H + 4 * channel,
-               &on_ticks_upper,
-               sizeof( on_ticks_upper )
-            ) == I2cInterface::kSuccess )
-            {
-               uint8_t off_ticks_lower = off_ticks & 0xFF;
-
-               if ( i2c_.write(
-                  PWMC_REG_LED0_OFF_L + 4 * channel,
-                  &off_ticks_lower,
-                  sizeof( off_ticks_lower )
-               ) == I2cInterface::kSuccess )
-               {
-                  uint8_t off_ticks_upper = off_ticks >> 8;
-
-                  if ( i2c_.write(
-                     PWMC_REG_LED0_OFF_H + 4 * channel,
-                     &off_ticks_upper,
-                     sizeof( off_ticks_upper )
-                  ) == I2cInterface::kSuccess )
-                  {
-                     success = true;
-                  }
-                  else
-                  {
-                     log::error("PwmController::set_pwm: ERROR at %d\n",__LINE__);
-                     success = false;
-                  }
-               }
-               else
-               {
-                  log::error("PwmController::set_pwm: ERROR at %d\n",__LINE__);
-                  success = false;
-               }
-            }
-            else
-            {
-               log::error("PwmController::set_pwm: ERROR at %d\n",__LINE__);
-               success = false;
-            }
-         }
-         else
-         {
-            log::error("PwmController::set_pwm: ERROR at %d\n",__LINE__);
-            success = false;
-         }
-      }
-      else
-      {
-         log::error("PwmController::set_pwm: ERROR at %d\n",__LINE__);
-         success = false;
-      }
+   if ( !initialized_ ) {
+      status = error::make_error(kControllerNonInitializedMessage);
+      return status;
    }
 
-   return success;
-}
-
-//-----------------------------------------------------------------------------
-bool PwmController::set_all_pwm( uint16_t on_ticks, uint16_t off_ticks )
-{
-   bool success = false;
-
-   if ( i2c_.acquire( address_ ) == I2cInterface::kSuccess )
+   if ( (status = i2c_.acquire( address_ )) )
    {
       uint8_t on_ticks_lower = on_ticks & 0xFF;
 
-      if ( i2c_.write(
-         PWMC_REG_ALL_LED_ON_L,
-         &on_ticks_lower,
-         sizeof( on_ticks_lower )
-      ) == I2cInterface::kSuccess )
+      if ( i2c_.write(PWMC_REG_LED0_ON_L + 4 * channel, &on_ticks_lower, sizeof( on_ticks_lower )) )
       {
          uint8_t on_ticks_upper = on_ticks >> 8;
 
-         if ( i2c_.write(
-            PWMC_REG_ALL_LED_ON_H,
-            &on_ticks_upper,
-            sizeof( on_ticks_upper )
-         ) == I2cInterface::kSuccess )
+         if ( i2c_.write(PWMC_REG_LED0_ON_H + 4 * channel, &on_ticks_upper, sizeof(on_ticks_upper)) )
          {
             uint8_t off_ticks_lower = off_ticks & 0xFF;
 
-            if ( i2c_.write(
-               PWMC_REG_ALL_LED_OFF_L,
-               &off_ticks_lower,
-               sizeof( off_ticks_lower )
-            ) == I2cInterface::kSuccess )
+            if ( i2c_.write(PWMC_REG_LED0_OFF_L + 4 * channel, &off_ticks_lower, sizeof(off_ticks_lower)) )
             {
                uint8_t off_ticks_upper = off_ticks >> 8;
 
-               if ( i2c_.write(
-                  PWMC_REG_ALL_LED_OFF_H,
-                  &off_ticks_upper,
-                  sizeof( off_ticks_upper )
-               ) == I2cInterface::kSuccess )
+               if ( i2c_.write(PWMC_REG_LED0_OFF_H + 4 * channel, &off_ticks_upper, sizeof(off_ticks_upper)) )
                {
-                  success = true;
-               }
-               else
-               {
-                  log::error("PwmController::set_all_pwm: ERROR at %d\n",__LINE__);
-                  success = false;
+                  status = error::make_error("Write error while setting off ticks upper");
                }
             }
             else
             {
-               log::error("PwmController::set_all_pwm: ERROR at %d\n",__LINE__);
-               success = false;
+               status = error::make_error("Write error while setting off ticks lower");
             }
          }
          else
          {
-            log::error("PwmController::set_all_pwm: ERROR at %d\n",__LINE__);
-            success = false;
+            status = error::make_error("Write error while setting on ticks upper");
          }
       }
       else
       {
-         log::error("PwmController::set_all_pwm: ERROR at %d\n",__LINE__);
-         success = false;
+         status = error::make_error("Write error while setting on ticks lower");
       }
    }
-   else
+
+   return status;
+}
+
+//-----------------------------------------------------------------------------
+error PwmController::set_all_pwm( uint16_t on_ticks, uint16_t off_ticks )
+{
+   error status;
+
+   if ( (status = i2c_.acquire( address_ )) )
    {
-      log::error("PwmController::set_all_pwm: ERROR at %d\n",__LINE__);
-      success = false;
+      uint8_t on_ticks_lower = on_ticks & 0xFF;
+
+      if ( i2c_.write(PWMC_REG_ALL_LED_ON_L, &on_ticks_lower, sizeof(on_ticks_lower)) )
+      {
+         uint8_t on_ticks_upper = on_ticks >> 8;
+
+         if ( i2c_.write(PWMC_REG_ALL_LED_ON_H, &on_ticks_upper, sizeof(on_ticks_upper)) )
+         {
+            uint8_t off_ticks_lower = off_ticks & 0xFF;
+
+            if ( i2c_.write(PWMC_REG_ALL_LED_OFF_L, &off_ticks_lower, sizeof(off_ticks_lower)) )
+            {
+               uint8_t off_ticks_upper = off_ticks >> 8;
+
+               if ( !i2c_.write(PWMC_REG_ALL_LED_OFF_H, &off_ticks_upper, sizeof(off_ticks_upper)) )
+               {
+                  status = error::make_error("Write error while setting OFF tickets upper");
+               }
+            }
+            else
+            {
+               status = error::make_error("Write error while setting OFF tickets lower");
+            }
+         }
+         else
+         {
+            status = error::make_error("Write error while setting ON tickets upper");
+         }
+      }
+      else
+      {
+         status = error::make_error("Write error while setting ON ticks lower");
+      }
    }
 
-   return success;
+   return status;
 }

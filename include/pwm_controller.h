@@ -35,6 +35,7 @@
 
 #include <stdint.h>
 #include <cstddef>
+#include "error_code.h"
 
 namespace rpi_bot_lib {
 
@@ -45,21 +46,21 @@ public:
 
    static constexpr uint16_t kNumTicks = 4096;
    static constexpr uint16_t kDefaultAddress = 0x0040;
+
+   PwmController( const PwmController& ) = delete;
    PwmController( I2cInterface& interface, uint16_t address = kDefaultAddress );
 
-   bool initialize();
+   PwmController& operator= ( const PwmController& ) = delete;
 
-   bool set_frequency( uint16_t frequency_hz );
+   error initialize();
+
+   error set_frequency( uint16_t frequency_hz );
    int32_t get_frequency() const;
 
-   bool set_pwm( size_t channel, uint16_t on_ticks, uint16_t off_ticks );
+   error set_pwm( size_t channel, uint16_t on_ticks, uint16_t off_ticks );
 
-   bool set_all_pwm( uint16_t on_ticks, uint16_t off_ticks );
+   error set_all_pwm( uint16_t on_ticks, uint16_t off_ticks );
 
-private:
-
-   PwmController( const PwmController& );
-   PwmController& operator= ( const PwmController& );
 
 private:
 

@@ -4,6 +4,8 @@
 
 #include <stdint.h>
 #include <cstddef>
+#include <string>
+#include "error_code.h"
 
 namespace rpi_bot_lib {
 
@@ -14,9 +16,14 @@ public:
 
    static constexpr uint16_t kDeviceAddress = 0x53;
 
+   Adxl345Controller() = delete;
+   Adxl345Controller( const Adxl345Controller& ) = delete;
+
    Adxl345Controller( I2cInterface&, uint16_t address = kDeviceAddress );
 
-   bool initialize();
+   Adxl345Controller& operator= ( const Adxl345Controller& ) = delete;
+
+   error initialize();
 
    enum AxisType {
       XAxis = 0,
@@ -31,7 +38,7 @@ public:
       kRange8g,
       kRange16g
    };
-   bool set_range_setting(RangeSetting setting);
+   error set_range_setting(RangeSetting setting);
 
    struct AccelerationData {
       int16_t x;
@@ -43,12 +50,8 @@ public:
          , z(0) {}
    };
 
-   bool read_acceleration_data(AccelerationData& data);
+   error read_acceleration_data(AccelerationData& data);
 
-private:
-
-   Adxl345Controller( const Adxl345Controller& );
-   Adxl345Controller& operator= ( const Adxl345Controller& );
 
 private:
 

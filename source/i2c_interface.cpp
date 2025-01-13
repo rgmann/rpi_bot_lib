@@ -50,6 +50,8 @@
 using namespace coral;
 using namespace rpi_bot_lib;
 
+static const std::string kInvalidDeviceHandleMessage = "Invalid device handle";
+
 //-----------------------------------------------------------------------------
 I2cInterface::I2cInterface()
    : handle_( I2cInterface::kInvalidHandle )
@@ -77,9 +79,9 @@ I2cInterface& I2cInterface::instance( const char* device_path )
 }
 
 //-----------------------------------------------------------------------------
-bool I2cInterface::open( const char* device_path )
+error I2cInterface::open( const char* device_path )
 {
-   i2c_error error;
+   error status;
 
    if ( handle_ == kInvalidHandle )
    {
@@ -96,17 +98,14 @@ bool I2cInterface::open( const char* device_path )
       }
       else
       {
-         std::stringstream message;
-         message << "I2cInterface::open: Failed to open device - "
-                 << strerror(errno)
-                 << std::endl;
-
-         error.code = kOpenError;
-         error.message = message.str();
+         status.code = error::kError;
+         status.message_begin() << "Failed to open device - "
+                                 << strerror(errno);
+         status.message_end();
       }
    }
 
-   return error;
+   return status;
 }
 
 //-----------------------------------------------------------------------------
@@ -126,9 +125,9 @@ bool I2cInterface::is_open() const
 }
 
 //-----------------------------------------------------------------------------
-I2cInterface::i2c_error I2cInterface::acquire( uint16_t device_id )
+error I2cInterface::acquire( uint16_t device_id )
 {
-   i2c_error error;
+   error status;
 
    if ( is_open() )
    {
@@ -137,32 +136,29 @@ I2cInterface::i2c_error I2cInterface::acquire( uint16_t device_id )
       if ( ( device_id_ul & 0xFFFFFF00 ) &&
            ( ( capabilities_ & I2C_FUNC_10BIT_ADDR ) == 0 ) )
       {
-         error.code = kInvalidAddessMode;
-         error.message = "I2cInterface::acquire: 10-bit addresses not supported.\n";
+         status = error::make_error("10-bit addresses not supported");
       }
       else if ( ioctl( handle_, I2C_SLAVE, device_id_ul ) < 0 )
       {
-         error.code = kInvalidDeviceID;
-         error.message = "I2cInterface::acquire: Invalid device ID\n";
+         status = error::make_error("Invalid device ID");
       }
    }
    else
    {
-      error.code = kInvalidDeviceHandle;
-      error.message = "I2cInterface::acquire: Invalid device handle\n";
+      status = error::make_error(kInvalidDeviceHandleMessage);
    }
 
    return error;
 }
 
 //-----------------------------------------------------------------------------
-I2cInterface::i2c_error I2cInterface::read(
+error I2cInterface::read(
    void*    buffer,
    size_t   max_bytes,
    size_t&  bytes_recvd
 )
 {
-   i2c_error error;
+   error status;
 
    bytes_recvd = 0;
 
@@ -176,21 +172,19 @@ I2cInterface::i2c_error I2cInterface::read(
       }
       else
       {
-         error.code = kReadError;
-         error.message = "I2cInterface::acquire: Invalid device handle\n";
+         status = error::make_error(kInvalidDeviceHandleMessage);
       }
    }
    else
    {
-      error.code = kInvalidDeviceHandle;
-      error.message = "I2cInterface::acquire: Invalid device handle\n";
+      status = error::make_error(kInvalidDeviceHandleMessage);
    }
 
    return error;
 }
 
 //-----------------------------------------------------------------------------
-I2cInterface::i2c_error I2cInterface::read(
+error I2cInterface::read(
    uint8_t  address,
    void*    buffer,
    size_t   max_bytes,
@@ -199,59 +193,51 @@ I2cInterface::i2c_error I2cInterface::read(
 {
    bytes_recvd = 0;
 
-   i2c_error error = I2cInterface::write( &address, sizeof(address) );
+   error status = I2cInterface::write( &address, sizeof(address) );
 
-   if ( error == I2cInterface::kSuccess )
+   if ( status )
    {
-      error = I2cInterface::read( buffer, max_bytes, bytes_recvd );
+      status = I2cInterface::read( buffer, max_bytes, bytes_recvd );
    }
 
-   return error;
+   return status;
 }
 
 //-----------------------------------------------------------------------------
-I2cInterface::i2c_error I2cInterface::write(
+error I2cInterface::write(
    const void*    buffer,
    size_t         buffer_size )
 {
-   i2c_error error;
+   error error;
 
    if ( is_open() )
    {
-      // log::mem_dump("I2cInterface::write: ", (const char*)buffer, buffer_size );
       int bytes_written = ::write( handle_, buffer, buffer_size );
 
-      if ( bytes_written == buffer_size )
+      if ( bytes_written != buffer_size )
       {
-         status = kSuccess;
-      }
-      else
-      {
-         std::stringstream message;
-         message << "I2cInterface::write: Error(ret="
+         status.code = error::kError;
+         status.message_begin() << "Error(ret="
                  << bytes_written << ") - "
-                 << strerror(errno) << std::endl;
-
-         error.code = kWriteError;
-         error.message = message.str();
+                 << strerror(errno);
+         status.message_end();
       }
    }
    else
    {
-      error.code = kInvalidDeviceHandle;
-      error.message = "I2cInterface::write: Invalid device handle\n";
+      status = error::make_error(kInvalidDeviceHandleMessage);
    }
 
    return error;
 }
 
 //-----------------------------------------------------------------------------
-I2cInterface::i2c_error I2cInterface::write(
+error I2cInterface::write(
    uint8_t        address,
    const void*    buffer,
    size_t         buffer_size )
 {
-   i2c_error error;
+   error status;
 
    // Create a number buffer that contains the register address and the user-
    // supplied buffer. The data must be sent as one buffer that a repeated
@@ -262,9 +248,9 @@ I2cInterface::i2c_error I2cInterface::write(
    memcpy( temp_buffer, &address, sizeof(address) );
    memcpy( temp_buffer + sizeof(address), buffer, buffer_size );
 
-   error = I2cInterface::write( temp_buffer, temp_buffer_size );
+   status = I2cInterface::write( temp_buffer, temp_buffer_size );
 
    delete[] temp_buffer;
 
-   return error;
+   return status;
 }
