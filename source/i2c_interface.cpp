@@ -44,6 +44,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sstream>
+#include <limits>
 
 #include "i2c_interface.h"
 
@@ -209,11 +210,11 @@ error I2cInterface::write(
 {
    error status;
 
-   if ( is_open() )
+   if ( is_open() && (buffer_size <= static_cast<size_t>(std::numeric_limits<int>::max())))
    {
       int bytes_written = ::write( handle_, buffer, buffer_size );
 
-      if ( bytes_written != buffer_size )
+      if ( bytes_written != static_cast<int>(buffer_size) )
       {
          status.code = error::kError;
          status.message_begin() << "Error(ret="
