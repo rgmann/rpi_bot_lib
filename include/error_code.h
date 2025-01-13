@@ -40,7 +40,7 @@ public:
       error status;
       status.code = kError;
       status.message = error_meesage;
-      return std::move(status);
+      return status;
    }
 
 private:

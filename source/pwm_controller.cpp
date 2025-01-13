@@ -32,6 +32,7 @@
 
 #include <chrono>
 #include <thread>
+#include <cmath>
 
 #include "i2c_interface.h"
 #include "pwm_controller.h"
@@ -65,13 +66,13 @@
 
 using namespace rpi_bot_lib;
 
-static const std::string kControllerNonInitializedMessage = "PWM controller not initialized";
+static const std::string kControllerNotInitializedMessage = "PWM controller not initialized";
 
 //-----------------------------------------------------------------------------
 PwmController::PwmController( I2cInterface& interface, uint16_t address )
    : i2c_( interface )
-   , address_( address )
    , initialized_( false )
+   , address_( address )
    , frequency_hz_( -1 )
 {
 }
@@ -138,7 +139,7 @@ error PwmController::set_frequency( uint16_t frequency )
    error status;
 
    if ( !initialized_ ) {
-      status = error::make_error(kControllerNonInitializedMessage);
+      status = error::make_error(kControllerNotInitializedMessage);
       return status;
    }
 
@@ -147,7 +148,7 @@ error PwmController::set_frequency( uint16_t frequency )
       double prescale_value = ( PWMC_25MHZ / 4096.0 ) / (double)frequency;
       prescale_value -= 1.0;
 
-      uint8_t prescale = floor( prescale_value + 0.5 );
+      uint8_t prescale = std::floor( prescale_value + 0.5 );
 
       size_t bytes_rcvd = 0;
       uint8_t orignal_mode = 0;
@@ -206,7 +207,7 @@ error PwmController::set_pwm( size_t channel, uint16_t on_ticks, uint16_t off_ti
    error status;
 
    if ( !initialized_ ) {
-      status = error::make_error(kControllerNonInitializedMessage);
+      status = error::make_error(kControllerNotInitializedMessage);
       return status;
    }
 

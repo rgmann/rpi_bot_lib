@@ -47,7 +47,6 @@
 
 #include "i2c_interface.h"
 
-using namespace coral;
 using namespace rpi_bot_lib;
 
 static const std::string kInvalidDeviceHandleMessage = "Invalid device handle";
@@ -148,7 +147,7 @@ error I2cInterface::acquire( uint16_t device_id )
       status = error::make_error(kInvalidDeviceHandleMessage);
    }
 
-   return error;
+   return status;
 }
 
 //-----------------------------------------------------------------------------
@@ -180,7 +179,7 @@ error I2cInterface::read(
       status = error::make_error(kInvalidDeviceHandleMessage);
    }
 
-   return error;
+   return status;
 }
 
 //-----------------------------------------------------------------------------
@@ -208,7 +207,7 @@ error I2cInterface::write(
    const void*    buffer,
    size_t         buffer_size )
 {
-   error error;
+   error status;
 
    if ( is_open() )
    {
@@ -228,7 +227,7 @@ error I2cInterface::write(
       status = error::make_error(kInvalidDeviceHandleMessage);
    }
 
-   return error;
+   return status;
 }
 
 //-----------------------------------------------------------------------------
