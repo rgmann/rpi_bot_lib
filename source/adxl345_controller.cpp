@@ -95,7 +95,6 @@ Adxl345Controller::Adxl345Controller(I2cInterface& i2c, uint16_t address)
    : i2c_( i2c )
    , initialized_( false )
    , address_( address )
-   , last_error_( 0 )
 {
    gains_[Adxl345Controller::XAxis] = 0.00376390;
    gains_[Adxl345Controller::YAxis] = 0.00376009;
