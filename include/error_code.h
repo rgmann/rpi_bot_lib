@@ -45,8 +45,22 @@ public:
       kNumError
    };
 
-   error_code  code = kSuccess;
+   error_code  code;
    std::string message;
+
+   /**
+    * By default, an error represents the success state.
+    */
+   error() : code(kSuccess) {}
+
+   /**
+    * Copy constructor. Only public members are copied.
+    */
+   error( const error& other )
+      : code(other.code)
+      , message(other.message)
+   {
+   }
 
    /**
     * Clears the stream so that a new message can be built.
@@ -96,6 +110,20 @@ public:
       status.code = kError;
       status.message = error_meesage;
       return status;
+   }
+
+   /**
+    * Copy operator. Only public members are copied.
+    */
+   error& operator= (const error& other )
+   {
+      if ( this != &other )
+      {
+         code = other.code;
+         message = other.message;
+      }
+
+      return *this;
    }
 
 

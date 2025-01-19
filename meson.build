@@ -15,7 +15,8 @@ include_root = 'include'
 sources = [
     'source/adxl345_controller.cpp',
     'source/i2c_interface.cpp',
-    'source/pwm_controller.cpp'
+    'source/pwm_controller.cpp',
+    'source/pan_tilt_controller.cpp'
 ]
 
 common_arguments = [

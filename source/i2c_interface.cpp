@@ -100,7 +100,7 @@ error I2cInterface::open( const char* device_path )
       {
          status.code = error::kError;
          status.message_begin() << "Failed to open device - "
-                                 << strerror(errno);
+                                << strerror(errno);
          status.message_end();
       }
    }
