@@ -4,7 +4,7 @@ This repository provides a collection of wrappers for protocols and devices that
 
 ## Dependencies
 
-This project tries to minimize external dependencies as much as possible. You just need to install [meson]().
+This project tries to minimize external dependencies as much as possible. You just need to install [meson](https://mesonbuild.com/Quick-guide.html).
 
 ## Getting Started
 

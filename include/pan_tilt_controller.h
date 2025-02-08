@@ -54,6 +54,7 @@ public:
 
    error set_position( float phi_rad, float theta_rad );
    error ease_position( float phi_rad, float theta_rad );
+   error increment_position( float phi_inc_rad, float theta_inc_rad );
 
    float get_phi() const;
    float get_theta() const;

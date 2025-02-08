@@ -30,8 +30,6 @@
 // Date: 2015-11-15
 // 
 
-// #include <glib.h>
-// #include <glib/gprintf.h>
 #include <errno.h>
 #include <string.h>
 #include <stdio.h>

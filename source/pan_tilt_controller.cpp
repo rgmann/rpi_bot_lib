@@ -256,6 +256,12 @@ error PanTiltController::ease_position( float phi, float theta )
 }
 
 //-----------------------------------------------------------------------------
+error PanTiltController::increment_position( float phi_inc_rad, float theta_inc_rad )
+{
+   return set_position(current_phi_ + phi_inc_rad, current_theta_ + theta_inc_rad);
+}
+
+//-----------------------------------------------------------------------------
 float PanTiltController::get_phi() const
 {
    return current_phi_;
